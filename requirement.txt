@@ -1,0 +1,4 @@
+pip install ibm-watsonx-ai==1.4.7 
+pip install pydantic==2.12.4
+pip install jsonschema
+pip install streamlit
