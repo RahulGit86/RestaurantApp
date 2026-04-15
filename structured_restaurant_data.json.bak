@@ -3236,21 +3236,5 @@
         "environment": "",
         "shortcomings": [],
         "itemId": 1000211
-    },
-    {
-        "name": "Ember & Salt",
-        "location": "San Francisco",
-        "type": "upscale modern American bistro",
-        "food_style": "wood-fired cuisine",
-        "rating": 4.6,
-        "price_range": 3,
-        "signatures": [
-            "dry-aged ribeye",
-            "truffle arancini"
-        ],
-        "vibe": "",
-        "environment": "",
-        "shortcomings": [],
-        "itemId": 1000212
     }
 ]

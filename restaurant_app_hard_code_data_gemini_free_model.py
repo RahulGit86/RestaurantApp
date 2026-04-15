@@ -2,10 +2,11 @@ import streamlit as st
 import json
 import os
 import shutil
-from ibm_watsonx_ai import Credentials
-from ibm_watsonx_ai.foundation_models import ModelInference
+#from ibm_watsonx_ai import Credentials
+#from ibm_watsonx_ai.foundation_models import ModelInference
 from jsonschema import validate, ValidationError as JsonSchemaValidationError
-
+import requests
+import google.generativeai as genai
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="California Culinary Map",
@@ -132,8 +133,18 @@ html, body, [class*="css"] {
     border-bottom: 1px solid #2e2b25;
     padding-bottom: 0.5rem;
     margin-bottom: 1.2rem;
+    font-weight: 700;
 }
-
+/* Header */
+.section-header {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.8rem;
+    font-weight: 300;
+    color: black;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 0.2rem;
+}
 /* Inputs */
 .stTextInput input, .stTextArea textarea, .stNumberInput input {
     background-color: #1c1a16 !important;
@@ -278,24 +289,31 @@ def save_data(data, file_path=FILEPATH, backup_path=BACKUP_PATH):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
+
 def llm_model(system_msg, prompt_txt, params=None):
-    api_key = st.session_state.get("api_key", "")
-    credentials = Credentials(
-        url="https://us-south.ml.cloud.ibm.com",
-        api_key=api_key if api_key else None
-    )
-    model = ModelInference(
-        model_id="ibm/granite-4-h-small",
-        project_id="skills-network",
-        credentials=credentials,
-        params=params or {}
-    )
-    messages = [
-        {"role": "system", "content": system_msg},
-        {"role": "user",   "content": prompt_txt}
-    ]
-    response = model.chat(messages=messages)
-    return response["choices"][0]["message"]["content"]
+    params = params or {}
+    
+    api_key = st.secrets.get("GEMINI_API_KEY", "") or st.session_state.get("gemini_api_key", "")
+    if not api_key:
+        st.error("❌ Gemini API key not set. Add it in sidebar or secrets.")
+        return None
+ 
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",   # free tier model
+            system_instruction=system_msg,
+            generation_config={
+                "temperature":     params.get("temperature", 0.2),
+                "max_output_tokens": params.get("max_new_tokens", 1024),
+            }
+        )
+        response = model.generate_content(prompt_txt)
+        return response.text
+
+    except Exception as e:
+        st.error(f"❌ Gemini error: {e}")
+        return None
 
 def restaurant_data_structure_prompt_generation(restaurant_paragraph):
     base_system_msg = f"""
@@ -419,8 +437,14 @@ if "confirm_delete" not in st.session_state:
     st.session_state.confirm_delete = False
 # ── Theme Management ──────────────────────────────────────────────────────────
 if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
-
+    st.session_state.theme = "Light"
+# In session state init block, replace api_key with:
+#if "ollama_model" not in st.session_state:
+#    st.session_state.ollama_model = "llama3.1:latest"
+#if "gemini_api_key" not in st.session_state:
+#    st.session_state.gemini_api_key = "AIzaSyDNpXweAJIXn1_ehjZnzqBxLBTPIE2vw7M"
+       
+    
 def get_theme_css(theme):
     if theme == "Dark":
         return """
@@ -432,6 +456,7 @@ def get_theme_css(theme):
         [data-testid="stRadio"] label {
         color: #f0ece4 !important; /* Brighter white for dark mode */
         font-weight: 500;
+        .section-header { color: #f0ece4 !important; }
 }
         """
     else:
@@ -601,10 +626,10 @@ with st.sidebar:
     # Theme Toggle
     #new_theme = st.toggle("Light Mode", value=(st.session_state.theme == "Light"))
     st.markdown('<div class="main-subheader">', unsafe_allow_html=True)
-    new_theme = st.toggle("Change Mode", value=(st.session_state.theme == "Light"))
+    new_theme = st.toggle("Change Mode", value=(st.session_state.theme == "Dark"))
     st.markdown('</div>', unsafe_allow_html=True)
-    if new_theme != (st.session_state.theme == "Light"):
-        st.session_state.theme = "Light" if new_theme else "Dark"
+    if new_theme != (st.session_state.theme == "Dark"):
+        st.session_state.theme = "Dark" if new_theme else "Light"
         st.rerun()
         
     st.divider()
@@ -630,7 +655,7 @@ st.markdown('<div class="main-subheader">Restaurant Intelligence Database</div>'
 # ── 1. BROWSE ALL ─────────────────────────────────────────────────────────────
 if page == "📋 Browse All":
     data = load_data()
-    st.markdown('<div class="section-title">All Restaurants</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">All Restaurants</div>', unsafe_allow_html=True)
 
     if not data:
         st.info("No restaurants in the database yet. Add one using the sidebar!")
@@ -667,7 +692,7 @@ if page == "📋 Browse All":
 # ── 2. VIEW RECORD ────────────────────────────────────────────────────────────
 elif page == "🔍 View Record":
     data = load_data()
-    st.markdown('<div class="section-title">View Detailed Record</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">View Detailed Record</div>', unsafe_allow_html=True)
 
     if not data:
         st.info("No restaurants in the database yet.")
@@ -687,57 +712,57 @@ elif page == "🔍 View Record":
 
 # ── 3. ADD RESTAURANT ─────────────────────────────────────────────────────────
 elif page == "➕ Add Restaurant":
-    st.markdown('<div class="section-title">Add New Restaurant</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Add New Restaurant</div>', unsafe_allow_html=True)
 
-    if not st.session_state.api_key:
-        st.warning("⚠️ Please enter your IBM WatsonX API key in the sidebar before adding a restaurant.")
-    else:
-        st.markdown("""
-        <div style="background:#1c1a16;border:1px solid #2e2b25;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.2rem;color:#8a8278;font-size:0.88rem;">
-        Paste a natural language restaurant description below. The AI will automatically extract
-        and structure the data into the database.
-        </div>
-        """, unsafe_allow_html=True)
+    #if not st.session_state.api_key:
+    #    st.warning("⚠️ Please enter your IBM WatsonX API key in the sidebar before adding a restaurant.")
+    #else:
+    st.markdown("""
+    <div style="background:#1c1a16;border:1px solid #2e2b25;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.2rem;color:#8a8278;font-size:0.88rem;">
+    Paste a natural language restaurant description below. The AI will automatically extract
+    and structure the data into the database.
+    </div>
+    """, unsafe_allow_html=True)
 
-        paragraph = st.text_area(
-            "Restaurant Description",
-            placeholder=(
-                "e.g. Down in San Francisco, Ember & Salt is an upscale modern American "
-                "bistro known for its wood-fired cuisine. With a 4.6/5 rating and $$$ pricing, "
-                "signature dishes include dry-aged ribeye and truffle arancini..."
-            ),
-            height=180
-        )
+    paragraph = st.text_area(
+        "Restaurant Description",
+        placeholder=(
+            "e.g. Down in San Francisco, Ember & Salt is an upscale modern American "
+            "bistro known for its wood-fired cuisine. With a 4.6/5 rating and $$$ pricing, "
+            "signature dishes include dry-aged ribeye and truffle arancini..."
+        ),
+        height=180
+    )
 
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            submit = st.button("🤖 Process & Add", use_container_width=True)
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        submit = st.button("🤖 Process & Add", use_container_width=True)
 
-        if submit:
-            if not paragraph.strip():
-                st.error("Please enter a restaurant description.")
+    if submit:
+        if not paragraph.strip():
+            st.error("Please enter a restaurant description.")
+        else:
+            data = load_data()
+            item_id = 1000000 + len(data) + 1
+
+            with st.spinner("🔄 AI is extracting restaurant data..."):
+                result = new_data_entry_process(paragraph, item_id)
+
+            if result:
+                data.append(result)
+                save_data(data)
+                st.success(f"✅ **{result.get('name', 'Restaurant')}** has been added successfully!")
+                st.divider()
+                st.markdown("**Preview of added record:**")
+                render_restaurant_card(result, len(data) - 1)
+                st.json(result)
             else:
-                data = load_data()
-                item_id = 1000000 + len(data) + 1
-
-                with st.spinner("🔄 AI is extracting restaurant data..."):
-                    result = new_data_entry_process(paragraph, item_id)
-
-                if result:
-                    data.append(result)
-                    save_data(data)
-                    st.success(f"✅ **{result.get('name', 'Restaurant')}** has been added successfully!")
-                    st.divider()
-                    st.markdown("**Preview of added record:**")
-                    render_restaurant_card(result, len(data) - 1)
-                    st.json(result)
-                else:
-                    st.error("❌ Failed to process the description after multiple attempts. Please try rephrasing.")
+                st.error("❌ Failed to process the description after multiple attempts. Please try rephrasing.")
 
 # ── 4. EDIT RECORD ────────────────────────────────────────────────────────────
 elif page == "✏️ Edit Record":
     data = load_data()
-    st.markdown('<div class="section-title">Edit Restaurant Record</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Edit Restaurant Record</div>', unsafe_allow_html=True)
 
     if not data:
         st.info("No restaurants in the database yet.")

@@ -1,3 +1,4 @@
-streamlit==1.29.0
-ibm-watsonx-ai==0.2.0
-jsonschema==4.21.0
+streamlit
+requests
+jsonschema
+google-generativeai
